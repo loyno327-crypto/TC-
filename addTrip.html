@@ -7,37 +7,36 @@
 <body>
   <div class="form-wrap">
     <div class="form-card">
-      <h3 style="margin:0 0 14px;">Новая поездка</h3>
+      <h3 style="margin:0 0 14px;">Новая поездка (несколько грузов)</h3>
 
       <form id="tripForm">
         <div class="field">
-          <label>Сумма поездки (руб)</label>
-          <input class="input" type="number" id="amount" min="0" required />
+          <label>Название поездки</label>
+          <input class="input" type="text" id="tripName" placeholder="Например, Ульяновск - Казань" required />
         </div>
 
-        <div class="field">
-          <label>Км</label>
-          <input class="input" type="number" id="km" min="1" required />
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div class="field">
+            <label>Общий километраж</label>
+            <input class="input" type="number" id="totalKm" min="1" required />
+          </div>
+
+          <div class="field">
+            <label>Пустой километраж</label>
+            <input class="input" type="number" id="emptyKm" min="0" value="0" required />
+          </div>
         </div>
 
-        <div class="field">
-          <label>Тип оплаты</label>
-          <select id="paymentType" class="input" required>
-            <option value="cash">Нал</option>
-            <option value="vat">С НДС</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label>Есть ли обратный груз</label>
-          <select id="hasBackhaul" class="input" required>
-            <option value="yes">Да</option>
-            <option value="no">Нет</option>
-          </select>
+        <div class="card" style="padding:10px; margin-top:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong>Грузы в поездке</strong>
+            <button type="button" class="btn btn-ghost" id="addCargoBtn">+ Добавить груз</button>
+          </div>
+          <div id="cargoRows"></div>
         </div>
 
         <div style="display:flex; gap:8px; margin-top:16px;">
-          <button type="button" class="btn btn-ghost" onclick="google.script.host.close()">Отмена</button>
+          <button type="button" class="btn btn-ghost" onclick="cancelForm()">Отмена</button>
           <button type="submit" class="btn btn-primary" style="flex:1;">Сохранить поездку</button>
         </div>
       </form>
@@ -49,26 +48,83 @@
   <script>
     const form = document.getElementById('tripForm');
     const statusBox = document.getElementById('status');
+    const cargoRows = document.getElementById('cargoRows');
+    const addCargoBtn = document.getElementById('addCargoBtn');
 
     function setStatus(message, type = 'success') {
       statusBox.className = `status ${type}`;
       statusBox.textContent = message;
     }
 
+    function createCargoRow(defaultName = '') {
+      const row = document.createElement('div');
+      row.className = 'cargo-row';
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = '1.4fr 1fr 1fr auto';
+      row.style.gap = '8px';
+      row.style.marginBottom = '8px';
+
+      row.innerHTML = `
+        <input class="input cargo-name" type="text" placeholder="Название груза/рейса" value="${defaultName}" required>
+        <input class="input cargo-amount" type="number" min="1" placeholder="Сумма" required>
+        <select class="input cargo-payment" required>
+          <option value="cash">Нал</option>
+          <option value="vat">С НДС</option>
+        </select>
+        <button type="button" class="btn btn-ghost cargo-remove">✕</button>
+      `;
+
+      row.querySelector('.cargo-remove').addEventListener('click', () => {
+        if (cargoRows.children.length <= 1) {
+          setStatus('Нужен минимум один груз', 'error');
+          return;
+        }
+        row.remove();
+      });
+
+      cargoRows.appendChild(row);
+    }
+
+    function getCargoData() {
+      return Array.from(cargoRows.querySelectorAll('.cargo-row')).map(row => ({
+        cargoName: row.querySelector('.cargo-name').value.trim(),
+        amount: Number(row.querySelector('.cargo-amount').value),
+        paymentType: row.querySelector('.cargo-payment').value
+      }));
+    }
+
     function validate(data) {
-      if (!data.amount || data.amount <= 0) return 'Введите корректную сумму поездки';
-      if (!data.km || data.km <= 0) return 'Введите корректный километраж';
+      if (!data.tripName) return 'Введите название поездки';
+      if (!data.totalKm || data.totalKm <= 0) return 'Введите корректный общий километраж';
+      if (data.emptyKm < 0 || data.emptyKm > data.totalKm) return 'Пустой км должен быть от 0 до общего км';
+      if (!data.cargos.length) return 'Добавьте хотя бы один груз';
+
+      for (let i = 0; i < data.cargos.length; i++) {
+        const c = data.cargos[i];
+        if (!c.cargoName) return `Введите название для груза ${i + 1}`;
+        if (!c.amount || c.amount <= 0) return `Введите сумму для груза ${i + 1}`;
+      }
       return null;
     }
+
+    function cancelForm() {
+      if (window.opener) {
+        window.close();
+        return;
+      }
+      google.script.host.close();
+    }
+
+    addCargoBtn.addEventListener('click', () => createCargoRow());
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
 
       const data = {
-        amount: Number(document.getElementById('amount').value),
-        km: Number(document.getElementById('km').value),
-        paymentType: document.getElementById('paymentType').value,
-        hasBackhaul: document.getElementById('hasBackhaul').value
+        tripName: document.getElementById('tripName').value.trim(),
+        totalKm: Number(document.getElementById('totalKm').value),
+        emptyKm: Number(document.getElementById('emptyKm').value),
+        cargos: getCargoData()
       };
 
       const error = validate(data);
@@ -82,13 +138,19 @@
       google.script.run
         .withSuccessHandler(function (res) {
           setStatus(res.message, 'success');
-          setTimeout(() => google.script.host.close(), 700);
+          if (window.opener) {
+            window.opener.postMessage({ type: 'trip-saved' }, '*');
+          }
+          setTimeout(() => cancelForm(), 650);
         })
         .withFailureHandler(function (err) {
           setStatus(err.message || 'Ошибка сохранения', 'error');
         })
         .saveTrip(data);
     });
+
+    createCargoRow('Ульяновск - Казань');
+    createCargoRow('Ульяновск - Зеленодольск');
   </script>
 </body>
 </html>
