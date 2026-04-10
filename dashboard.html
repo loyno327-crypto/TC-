@@ -19,7 +19,7 @@
         </div>
         <div style="display:flex; gap:8px;">
           <button class="btn btn-ghost" onclick="refreshDashboard()">📊 Обновить</button>
-          <button class="btn btn-primary" onclick="google.script.run.showAddTripModal()">➕ Добавить поездку</button>
+          <button class="btn btn-primary" onclick="openAddTripWindow()">➕ Добавить поездку</button>
         </div>
       </div>
 
@@ -46,8 +46,16 @@
   <script>
     google.charts.load('current', {'packages':['corechart']});
 
+    let addTripWindowRef = null;
+
     document.getElementById('startDate').addEventListener('change', refreshDashboard);
     document.getElementById('endDate').addEventListener('change', refreshDashboard);
+
+    window.addEventListener('message', function (event) {
+      if (event && event.data && event.data.type === 'trip-saved') {
+        refreshDashboard();
+      }
+    });
 
     function formatMoney(value) {
       return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(value || 0) + ' ₽';
@@ -58,6 +66,29 @@
       status.className = `status ${type}`;
       status.textContent = message;
       setTimeout(() => status.textContent = '', 2500);
+    }
+
+    function openAddTripWindow() {
+      google.script.run
+        .withSuccessHandler(function (baseUrl) {
+          if (!baseUrl) {
+            setStatus('Опубликуйте Web App, чтобы форма открывалась в новой вкладке', 'error');
+            google.script.run.showAddTripModal();
+            return;
+          }
+
+          const url = `${baseUrl}?view=addTrip`;
+          addTripWindowRef = window.open(url, '_blank');
+
+          if (!addTripWindowRef) {
+            setStatus('Браузер заблокировал всплывающее окно. Разрешите pop-up.', 'error');
+            return;
+          }
+
+          setStatus('Форма добавления открыта в новой вкладке');
+        })
+        .withFailureHandler(err => setStatus(err.message || 'Не удалось открыть форму', 'error'))
+        .getAppBaseUrl();
     }
 
     function refreshDashboard() {

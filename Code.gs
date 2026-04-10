@@ -20,6 +20,15 @@ function onOpen() {
   ensureStructure();
 }
 
+function doGet(e) {
+  ensureStructure();
+  const view = (e && e.parameter && e.parameter.view) || 'dashboard';
+  const templateName = view === 'addTrip' ? 'addTrip' : 'dashboard';
+  return HtmlService.createTemplateFromFile(templateName)
+    .evaluate()
+    .setTitle(view === 'addTrip' ? 'Добавить поездку' : 'CRM Dashboard');
+}
+
 function openDashboard() {
   ensureStructure();
   const html = HtmlService.createTemplateFromFile('dashboard')
@@ -33,10 +42,15 @@ function openDashboard() {
 function showAddTripModal() {
   const html = HtmlService.createTemplateFromFile('addTrip')
     .evaluate()
-    .setWidth(520)
-    .setHeight(640);
+    .setWidth(680)
+    .setHeight(760);
 
   SpreadsheetApp.getUi().showModalDialog(html, 'Добавить поездку');
+}
+
+function getAppBaseUrl() {
+  const serviceUrl = ScriptApp.getService().getUrl();
+  return serviceUrl || '';
 }
 
 function saveTrip(data) {
@@ -44,74 +58,106 @@ function saveTrip(data) {
   const calc = calculateTrip(data);
   const tripsSheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEETS.TRIPS);
 
-  tripsSheet.appendRow([
-    new Date(),
-    calc.amount,
-    calc.km,
-    calc.paymentType,
-    calc.fuelTotal,
-    calc.leasing,
-    calc.repair,
-    calc.driverNet,
-    calc.companyProfit,
-    calc.hasBackhaul ? 'Да' : 'Нет'
-  ]);
+  calc.cargos.forEach(cargo => {
+    tripsSheet.appendRow([
+      calc.date,
+      calc.tripId,
+      calc.tripName,
+      cargo.cargoName,
+      cargo.amount,
+      calc.totalKm,
+      calc.emptyKm,
+      calc.loadedKm,
+      cargo.paymentTypeLabel,
+      cargo.fuelTotal,
+      cargo.leasing,
+      cargo.repair,
+      cargo.driverNet,
+      cargo.companyProfit,
+      calc.hasBackhaul ? 'Да' : 'Нет'
+    ]);
+  });
 
   return {
     success: true,
-    message: 'Поездка сохранена успешно',
+    message: `Поездка сохранена. Добавлено грузов: ${calc.cargos.length}`,
     trip: calc,
     dashboard: getDashboardData()
   };
 }
 
 function calculateTrip(data) {
-  const amount = Number(data.amount) || 0;
-  const km = Number(data.km) || 0;
-  const paymentType = String(data.paymentType || 'cash').toLowerCase();
-  const hasBackhaul = String(data.hasBackhaul || 'yes').toLowerCase() === 'yes';
+  const tripName = String(data.tripName || '').trim();
+  const totalKm = Number(data.totalKm) || 0;
+  const emptyKm = Number(data.emptyKm) || 0;
+  const hasBackhaul = emptyKm <= 0;
+  const cargos = Array.isArray(data.cargos) ? data.cargos : [];
 
+  if (!tripName) throw new Error('Укажите название поездки');
+  if (totalKm <= 0) throw new Error('Введите корректный общий километраж');
+  if (emptyKm < 0 || emptyKm > totalKm) throw new Error('Пустой пробег должен быть от 0 до общего километража');
+  if (!cargos.length) throw new Error('Добавьте минимум один груз');
+
+  const normalizedCargos = cargos.map((cargo, idx) => {
+    const amount = Number(cargo.amount) || 0;
+    const paymentType = String(cargo.paymentType || 'cash').toLowerCase();
+    const cargoName = String(cargo.cargoName || `Груз ${idx + 1}`).trim();
+
+    if (amount <= 0) throw new Error(`Проверьте сумму у груза ${idx + 1}`);
+
+    return {
+      cargoName,
+      amount,
+      paymentType,
+      paymentTypeLabel: paymentType === 'vat' ? 'С НДС' : 'Нал'
+    };
+  });
+
+  const totalAmount = normalizedCargos.reduce((sum, cargo) => sum + cargo.amount, 0);
   const fuel100 = CONFIG.CONSUMPTION_PER_100KM * CONFIG.FUEL_PRICE;
   const fuel1km = fuel100 / 100;
-  const fuelTotal = km * fuel1km;
+  const totalFuel = totalKm * fuel1km;
+  const loadedKm = Math.max(totalKm - emptyKm, 0);
+  const tripId = Utilities.getUuid();
 
-  const profitBase = amount - fuelTotal;
-  const leasing = profitBase * 0.2;
-  const repair = profitBase * 0.4;
+  const cargoCalculations = normalizedCargos.map(cargo => {
+    const revenueShare = totalAmount > 0 ? cargo.amount / totalAmount : 0;
+    const fuelTotal = totalFuel * revenueShare;
+    const profitBase = cargo.amount - fuelTotal;
 
-  let driverGross = profitBase * 0.4;
-  let driverTax = 0;
-  let driverNet = driverGross;
+    const leasing = profitBase * 0.2;
+    const repair = profitBase * 0.4;
+    const driverGross = profitBase * 0.4;
+    const driverTax = cargo.paymentType === 'vat' ? driverGross * CONFIG.DRIVER_TAX_RATE : 0;
+    const driverNet = driverGross - driverTax;
+    const companyProfit = leasing + repair;
 
-  if (paymentType === 'vat') {
-    driverTax = driverGross * CONFIG.DRIVER_TAX_RATE;
-    driverNet = driverGross - driverTax;
-  }
-
-  let companyProfit = leasing + repair;
-
-  if (!hasBackhaul) {
-    const extraFuel = (km * fuel1km) / 2;
-    driverNet -= extraFuel / 2;
-    companyProfit -= extraFuel / 2;
-  }
+    return {
+      ...cargo,
+      fuelTotal,
+      profitBase,
+      leasing,
+      repair,
+      driverGross,
+      driverTax,
+      driverNet,
+      companyProfit
+    };
+  });
 
   return {
     date: new Date(),
-    amount,
-    km,
-    paymentType: paymentType === 'vat' ? 'С НДС' : 'Нал',
+    tripId,
+    tripName,
+    totalKm,
+    emptyKm,
+    loadedKm,
     hasBackhaul,
     fuel100,
     fuel1km,
-    fuelTotal,
-    profitBase,
-    leasing,
-    repair,
-    driverGross,
-    driverTax,
-    driverNet,
-    companyProfit
+    totalFuel,
+    amount: totalAmount,
+    cargos: cargoCalculations
   };
 }
 
@@ -138,6 +184,8 @@ function getDashboardData(startDate, endDate) {
   const header = values[0];
   const rows = values.slice(1).filter(r => r[0]);
 
+  const col = getColumnIndexMap(header);
+
   const start = startDate ? new Date(startDate) : null;
   const end = endDate ? new Date(endDate) : null;
 
@@ -152,12 +200,17 @@ function getDashboardData(startDate, endDate) {
     return true;
   });
 
-  const totals = filtered.reduce((acc, row) => {
-    acc.tripCount += 1;
-    acc.totalRevenue += Number(row[1]) || 0;
-    acc.totalFuel += Number(row[4]) || 0;
-    acc.totalDriverIncome += Number(row[7]) || 0;
-    acc.totalCompanyProfit += Number(row[8]) || 0;
+  const tripIds = new Set();
+
+  const totals = filtered.reduce((acc, row, idx) => {
+    const fallbackTripKey = `${row[0]}-${idx}`;
+    const tripId = row[col.tripId] || fallbackTripKey;
+    tripIds.add(tripId);
+
+    acc.totalRevenue += Number(row[col.amount]) || 0;
+    acc.totalFuel += Number(row[col.fuel]) || 0;
+    acc.totalDriverIncome += Number(row[col.driver]) || 0;
+    acc.totalCompanyProfit += Number(row[col.companyProfit]) || 0;
     return acc;
   }, {
     totalProfit: 0,
@@ -168,14 +221,15 @@ function getDashboardData(startDate, endDate) {
     totalRevenue: 0
   });
 
+  totals.tripCount = tripIds.size;
   totals.totalProfit = totals.totalCompanyProfit;
 
   const chartMap = {};
   filtered.forEach(row => {
     const key = Utilities.formatDate(new Date(row[0]), Session.getScriptTimeZone(), 'yyyy-MM-dd');
     if (!chartMap[key]) chartMap[key] = { revenue: 0, profit: 0 };
-    chartMap[key].revenue += Number(row[1]) || 0;
-    chartMap[key].profit += Number(row[8]) || 0;
+    chartMap[key].revenue += Number(row[col.amount]) || 0;
+    chartMap[key].profit += Number(row[col.companyProfit]) || 0;
   });
 
   const chart = Object.keys(chartMap)
@@ -187,6 +241,21 @@ function getDashboardData(startDate, endDate) {
     totals,
     chart,
     trips: filtered
+  };
+}
+
+function getColumnIndexMap(header) {
+  const byName = {};
+  header.forEach((name, idx) => {
+    byName[String(name).trim()] = idx;
+  });
+
+  return {
+    tripId: byName['ID поездки'] ?? 1,
+    amount: byName['Сумма'] ?? 1,
+    fuel: byName['Топливо'] ?? 4,
+    driver: byName['Водитель'] ?? 7,
+    companyProfit: byName['Прибыль компании'] ?? 8
   };
 }
 
@@ -203,7 +272,24 @@ function ensureStructure() {
     });
 
   const tripsSheet = ss.getSheetByName(CONFIG.SHEETS.TRIPS);
-  const tripHeaders = ['Дата', 'Сумма', 'Км', 'Тип оплаты', 'Топливо', 'Лизинг', 'Ремонт', 'Водитель', 'Прибыль компании', 'Обратный груз'];
+  const tripHeaders = [
+    'Дата',
+    'ID поездки',
+    'Название поездки',
+    'Название груза',
+    'Сумма',
+    'Общий км',
+    'Пустой км',
+    'Груженый км',
+    'Тип оплаты',
+    'Топливо',
+    'Лизинг',
+    'Ремонт',
+    'Водитель',
+    'Прибыль компании',
+    'Обратный груз'
+  ];
+
   if (tripsSheet.getLastRow() === 0) {
     tripsSheet.appendRow(tripHeaders);
   }
