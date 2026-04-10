@@ -24,10 +24,10 @@ function openDashboard() {
   ensureStructure();
   const html = HtmlService.createTemplateFromFile('dashboard')
     .evaluate()
-    .setTitle('🚛 CRM Dashboard')
-    .setWidth(420);
+    .setWidth(1180)
+    .setHeight(760);
 
-  SpreadsheetApp.getUi().showSidebar(html);
+  SpreadsheetApp.getUi().showModalDialog(html, '🚛 CRM Dashboard');
 }
 
 function showAddTripModal() {
