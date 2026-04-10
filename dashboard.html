@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('styles'); ?>
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="logo">🚛</div>
+    </aside>
+
+    <main class="content">
+      <div class="header">
+        <div>
+          <div class="title">Dashboard</div>
+          <div class="subtitle">CRM учета поездок</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-ghost" onclick="refreshDashboard()">📊 Обновить</button>
+          <button class="btn btn-primary" onclick="google.script.run.showAddTripModal()">➕ Добавить поездку</button>
+        </div>
+      </div>
+
+      <div class="filters">
+        <input id="startDate" class="input" type="date" />
+        <input id="endDate" class="input" type="date" />
+      </div>
+
+      <div class="kpis">
+        <div class="card"><div class="label">Общая прибыль</div><div class="value" id="kpiProfit">0 ₽</div></div>
+        <div class="card"><div class="label">Количество поездок</div><div class="value" id="kpiTrips">0</div></div>
+        <div class="card"><div class="label">Расходы (топливо)</div><div class="value" id="kpiFuel">0 ₽</div></div>
+        <div class="card"><div class="label">Доход водителей</div><div class="value" id="kpiDriver">0 ₽</div></div>
+      </div>
+
+      <div class="card chart">
+        <div id="chartArea" style="height:100%;"></div>
+      </div>
+
+      <div id="status" class="status"></div>
+    </main>
+  </div>
+
+  <script>
+    google.charts.load('current', {'packages':['corechart']});
+
+    document.getElementById('startDate').addEventListener('change', refreshDashboard);
+    document.getElementById('endDate').addEventListener('change', refreshDashboard);
+
+    function formatMoney(value) {
+      return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(value || 0) + ' ₽';
+    }
+
+    function setStatus(message, type = 'success') {
+      const status = document.getElementById('status');
+      status.className = `status ${type}`;
+      status.textContent = message;
+      setTimeout(() => status.textContent = '', 2500);
+    }
+
+    function refreshDashboard() {
+      const startDate = document.getElementById('startDate').value || null;
+      const endDate = document.getElementById('endDate').value || null;
+
+      google.script.run
+        .withSuccessHandler(renderDashboard)
+        .withFailureHandler(err => setStatus(err.message || 'Ошибка загрузки данных', 'error'))
+        .getDashboardData(startDate, endDate);
+    }
+
+    function renderDashboard(data) {
+      document.getElementById('kpiProfit').textContent = formatMoney(data.totals.totalCompanyProfit);
+      document.getElementById('kpiTrips').textContent = data.totals.tripCount;
+      document.getElementById('kpiFuel').textContent = formatMoney(data.totals.totalFuel);
+      document.getElementById('kpiDriver').textContent = formatMoney(data.totals.totalDriverIncome);
+
+      google.charts.setOnLoadCallback(() => drawChart(data.chart));
+      setStatus('Dashboard обновлен');
+    }
+
+    function drawChart(rows) {
+      const data = new google.visualization.DataTable();
+      data.addColumn('string', 'Дата');
+      data.addColumn('number', 'Выручка');
+      data.addColumn('number', 'Прибыль компании');
+      data.addRows(rows || []);
+
+      const options = {
+        legend: { position: 'bottom' },
+        colors: ['#2563eb', '#16a34a'],
+        chartArea: { left: 50, right: 12, top: 14, bottom: 36 },
+        hAxis: { textStyle: { fontSize: 10 } },
+        vAxis: { minValue: 0 },
+      };
+
+      const chart = new google.visualization.AreaChart(document.getElementById('chartArea'));
+      chart.draw(data, options);
+    }
+
+    refreshDashboard();
+  </script>
+</body>
+</html>

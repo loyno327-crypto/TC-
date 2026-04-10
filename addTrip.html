@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('styles'); ?>
+</head>
+<body>
+  <div class="form-wrap">
+    <div class="form-card">
+      <h3 style="margin:0 0 14px;">Новая поездка</h3>
+
+      <form id="tripForm">
+        <div class="field">
+          <label>Сумма поездки (руб)</label>
+          <input class="input" type="number" id="amount" min="0" required />
+        </div>
+
+        <div class="field">
+          <label>Км</label>
+          <input class="input" type="number" id="km" min="1" required />
+        </div>
+
+        <div class="field">
+          <label>Тип оплаты</label>
+          <select id="paymentType" class="input" required>
+            <option value="cash">Нал</option>
+            <option value="vat">С НДС</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Есть ли обратный груз</label>
+          <select id="hasBackhaul" class="input" required>
+            <option value="yes">Да</option>
+            <option value="no">Нет</option>
+          </select>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:16px;">
+          <button type="button" class="btn btn-ghost" onclick="google.script.host.close()">Отмена</button>
+          <button type="submit" class="btn btn-primary" style="flex:1;">Сохранить поездку</button>
+        </div>
+      </form>
+
+      <div id="status" class="status"></div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('tripForm');
+    const statusBox = document.getElementById('status');
+
+    function setStatus(message, type = 'success') {
+      statusBox.className = `status ${type}`;
+      statusBox.textContent = message;
+    }
+
+    function validate(data) {
+      if (!data.amount || data.amount <= 0) return 'Введите корректную сумму поездки';
+      if (!data.km || data.km <= 0) return 'Введите корректный километраж';
+      return null;
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      const data = {
+        amount: Number(document.getElementById('amount').value),
+        km: Number(document.getElementById('km').value),
+        paymentType: document.getElementById('paymentType').value,
+        hasBackhaul: document.getElementById('hasBackhaul').value
+      };
+
+      const error = validate(data);
+      if (error) {
+        setStatus(error, 'error');
+        return;
+      }
+
+      setStatus('Сохраняем поездку...');
+
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setStatus(res.message, 'success');
+          setTimeout(() => google.script.host.close(), 700);
+        })
+        .withFailureHandler(function (err) {
+          setStatus(err.message || 'Ошибка сохранения', 'error');
+        })
+        .saveTrip(data);
+    });
+  </script>
+</body>
+</html>
