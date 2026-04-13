@@ -27,12 +27,17 @@
   .tab.active { background:#dbeafe; border-color:#93c5fd; }
 
   .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px; }
+  .table-card { padding: 0; overflow: hidden; }
+  .table-wrap { width: 100%; overflow: auto; }
   .trip-list { display:grid; gap:10px; }
   .trip-item { cursor:pointer; }
+  .trip-item:hover { background: #f8fafc; }
   .trip-row { display:flex; justify-content:space-between; align-items:center; gap:10px; }
   .trip-route { font-weight:700; }
+  .trip-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); }
   .trip-sub { color:var(--muted); font-size:12px; margin-top:2px; }
   .trip-price { font-weight:700; white-space:nowrap; }
+  .empty-row { text-align: center; color: var(--muted); padding: 20px 8px !important; }
 
   .money-grid { display:grid; gap:10px; grid-template-columns:repeat(3, minmax(180px, 1fr)); }
   .label { font-size:12px; color:var(--muted); }
@@ -48,7 +53,9 @@
   .modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
 
   .tbl { width:100%; border-collapse:collapse; font-size:13px; }
+  .tbl thead th { position: sticky; top: 0; background: #f8fafc; z-index: 1; }
   .tbl th, .tbl td { border-bottom:1px solid var(--border); padding:8px; text-align:left; }
+  .tbl tfoot th { background: #f8fafc; }
   .detail-head { display:grid; gap:6px; margin-bottom:10px; }
 
   .form-wrap { padding:18px; }
