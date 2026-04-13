@@ -50,6 +50,28 @@ function getAppBaseUrl() {
   return ScriptApp.getService().getUrl() || '';
 }
 
+function getTripsHeader() {
+  return [
+    'Дата',
+    'ID поездки',
+    'Основной маршрут',
+    'Маршрут груза',
+    'Сумма',
+    'Тип оплаты',
+    'Общий км',
+    'Холостой км',
+    'Себестоимость топлива',
+    'Остаток после топлива',
+    'Лизинг',
+    'Ремонт',
+    'Водитель начислено',
+    'Налог водителя',
+    'Водитель к выплате',
+    'Корректировка (холостой км)',
+    'Компании после корректировки'
+  ];
+}
+
 function ensureStructure() {
   const ss = SpreadsheetApp.getActive();
   [CONFIG.SHEETS.TRIPS, CONFIG.SHEETS.SETTINGS].forEach((name) => {
@@ -57,26 +79,16 @@ function ensureStructure() {
   });
 
   const tripsSheet = ss.getSheetByName(CONFIG.SHEETS.TRIPS);
+  const tripHeaders = getTripsHeader();
+
   if (tripsSheet.getLastRow() === 0) {
-    tripsSheet.appendRow([
-      'Дата',
-      'ID поездки',
-      'Основной маршрут',
-      'Маршрут груза',
-      'Сумма',
-      'Тип оплаты',
-      'Общий км',
-      'Холостой км',
-      'Себестоимость топлива',
-      'Остаток после топлива',
-      'Лизинг',
-      'Ремонт',
-      'Водитель начислено',
-      'Налог водителя',
-      'Водитель к выплате',
-      'Корректировка (холостой км)',
-      'Компании после корректировки'
-    ]);
+    tripsSheet.appendRow(tripHeaders);
+  } else {
+    const currentHeader = tripsSheet.getRange(1, 1, 1, Math.max(tripsSheet.getLastColumn(), tripHeaders.length)).getValues()[0];
+    const normalized = tripHeaders.every((expected, i) => String(currentHeader[i] || '').trim() === expected);
+    if (!normalized) {
+      tripsSheet.getRange(1, 1, 1, tripHeaders.length).setValues([tripHeaders]);
+    }
   }
 
   const settingsSheet = ss.getSheetByName(CONFIG.SHEETS.SETTINGS);
@@ -330,23 +342,32 @@ function getTripDetails(tripId) {
 function createIndex(header) {
   const by = {};
   header.forEach((h, i) => by[String(h).trim()] = i);
+
+  const pick = (...names) => {
+    for (let i = 0; i < names.length; i++) {
+      const idx = by[names[i]];
+      if (typeof idx === 'number') return idx;
+    }
+    return undefined;
+  };
+
   return {
-    date: by['Дата'],
-    tripId: by['ID поездки'],
-    mainRoute: by['Основной маршрут'],
-    cargoRoute: by['Маршрут груза'],
-    amount: by['Сумма'],
-    paymentType: by['Тип оплаты'],
-    totalKm: by['Общий км'],
-    emptyKm: by['Холостой км'],
-    fuel: by['Себестоимость топлива'],
-    netAfterFuel: by['Остаток после топлива'],
-    leasing: by['Лизинг'],
-    repair: by['Ремонт'],
-    driverGross: by['Водитель начислено'],
-    driverTax: by['Налог водителя'],
-    driverNet: by['Водитель к выплате'],
-    emptyCorrection: by['Корректировка (холостой км)'],
-    companyNet: by['Компании после корректировки']
+    date: pick('Дата', 'Date'),
+    tripId: pick('ID поездки', 'ID', 'Trip ID'),
+    mainRoute: pick('Основной маршрут', 'Маршрут', 'Main route'),
+    cargoRoute: pick('Маршрут груза', 'Груз', 'Cargo route'),
+    amount: pick('Сумма', 'Стоимость', 'Amount'),
+    paymentType: pick('Тип оплаты', 'Оплата', 'Payment type'),
+    totalKm: pick('Общий км', 'Км', 'Total km'),
+    emptyKm: pick('Холостой км', 'Пустой км', 'Empty km'),
+    fuel: pick('Себестоимость топлива', 'Топливо', 'Fuel cost'),
+    netAfterFuel: pick('Остаток после топлива', 'После топлива', 'Net after fuel'),
+    leasing: pick('Лизинг', 'Leasing'),
+    repair: pick('Ремонт', 'Repair'),
+    driverGross: pick('Водитель начислено', 'Водитель (грязными)', 'Driver gross'),
+    driverTax: pick('Налог водителя', 'Налог', 'Driver tax'),
+    driverNet: pick('Водитель к выплате', 'Водитель (чистыми)', 'Driver net'),
+    emptyCorrection: pick('Корректировка (холостой км)', 'Корректировка', 'Empty correction'),
+    companyNet: pick('Компании после корректировки', 'Компании', 'Company net')
   };
 }

@@ -71,15 +71,7 @@
     }
 
     function openAddTrip() {
-      google.script.run
-        .withSuccessHandler(function(baseUrl) {
-          if (!baseUrl) {
-            google.script.run.openAddTripDialog();
-            return;
-          }
-          window.open(`${baseUrl}?view=addTrip`, '_blank');
-        })
-        .getAppBaseUrl();
+      google.script.run.openAddTripDialog();
     }
 
     function renderTrips(trips) {
