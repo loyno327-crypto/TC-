@@ -3,134 +3,188 @@
 <head>
   <base target="_top">
   <?!= include('styles'); ?>
-  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
 </head>
 <body>
-  <div class="app">
-    <aside class="sidebar">
-      <div class="logo">🚛</div>
-    </aside>
-
-    <main class="content">
-      <div class="header">
-        <div>
-          <div class="title">Dashboard</div>
-          <div class="subtitle">CRM учета поездок</div>
-        </div>
-        <div style="display:flex; gap:8px;">
-          <button class="btn btn-ghost" onclick="refreshDashboard()">📊 Обновить</button>
-          <button class="btn btn-primary" onclick="openAddTripWindow()">➕ Добавить поездку</button>
-        </div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <h2>Панель «Заявки»</h2>
+        <p>Все занесенные поездки и движение средств</p>
       </div>
-
-      <div class="filters">
-        <input id="startDate" class="input" type="date" />
-        <input id="endDate" class="input" type="date" />
+      <div class="top-actions">
+        <button class="btn btn-ghost" onclick="loadPanel()">Обновить</button>
+        <button class="btn btn-primary" onclick="openAddTrip()">Внести поездку</button>
       </div>
+    </header>
 
-      <div class="kpis">
-        <div class="card"><div class="label">Общая прибыль</div><div class="value" id="kpiProfit">0 ₽</div></div>
-        <div class="card"><div class="label">Количество поездок</div><div class="value" id="kpiTrips">0</div></div>
-        <div class="card"><div class="label">Расходы (топливо)</div><div class="value" id="kpiFuel">0 ₽</div></div>
-        <div class="card"><div class="label">Доход водителей</div><div class="value" id="kpiDriver">0 ₽</div></div>
+    <div class="tabs">
+      <button id="tabTrips" class="tab active" onclick="switchTab('trips')">Поездки</button>
+      <button id="tabMoney" class="tab" onclick="switchTab('money')">Информация о движении средств</button>
+    </div>
+
+    <section id="viewTrips">
+      <div id="tripList" class="trip-list"></div>
+    </section>
+
+    <section id="viewMoney" style="display:none;">
+      <div class="money-grid" id="moneyGrid"></div>
+    </section>
+
+    <div id="status" class="status"></div>
+  </div>
+
+  <div id="tripModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Подробная поездка</h3>
+        <button class="btn btn-ghost" onclick="closeTripModal()">Закрыть</button>
       </div>
-
-      <div class="card chart">
-        <div id="chartArea" style="height:100%;"></div>
-      </div>
-
-      <div id="status" class="status"></div>
-    </main>
+      <div id="tripDetails"></div>
+    </div>
   </div>
 
   <script>
-    google.charts.load('current', {'packages':['corechart']});
+    let panelData = null;
 
-    let addTripWindowRef = null;
-
-    document.getElementById('startDate').addEventListener('change', refreshDashboard);
-    document.getElementById('endDate').addEventListener('change', refreshDashboard);
-
-    window.addEventListener('message', function (event) {
-      if (event && event.data && event.data.type === 'trip-saved') {
-        refreshDashboard();
-      }
-    });
-
-    function formatMoney(value) {
-      return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(value || 0) + ' ₽';
+    function formatMoney(v) {
+      return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(v || 0) + ' ₽';
     }
 
-    function setStatus(message, type = 'success') {
-      const status = document.getElementById('status');
-      status.className = `status ${type}`;
-      status.textContent = message;
-      setTimeout(() => status.textContent = '', 2500);
+    function formatDate(v) {
+      if (!v) return '—';
+      return new Date(v).toLocaleDateString('ru-RU');
     }
 
-    function openAddTripWindow() {
+    function setStatus(msg, type = 'success') {
+      const el = document.getElementById('status');
+      el.className = `status ${type}`;
+      el.textContent = msg;
+      setTimeout(() => { el.textContent = ''; }, 2500);
+    }
+
+    function switchTab(tab) {
+      const trips = tab === 'trips';
+      document.getElementById('viewTrips').style.display = trips ? 'block' : 'none';
+      document.getElementById('viewMoney').style.display = trips ? 'none' : 'block';
+      document.getElementById('tabTrips').classList.toggle('active', trips);
+      document.getElementById('tabMoney').classList.toggle('active', !trips);
+    }
+
+    function openAddTrip() {
       google.script.run
-        .withSuccessHandler(function (baseUrl) {
+        .withSuccessHandler(function(baseUrl) {
           if (!baseUrl) {
-            setStatus('Опубликуйте Web App, чтобы форма открывалась в новой вкладке', 'error');
-            google.script.run.showAddTripModal();
+            google.script.run.openAddTripDialog();
             return;
           }
-
-          const url = `${baseUrl}?view=addTrip`;
-          addTripWindowRef = window.open(url, '_blank');
-
-          if (!addTripWindowRef) {
-            setStatus('Браузер заблокировал всплывающее окно. Разрешите pop-up.', 'error');
-            return;
-          }
-
-          setStatus('Форма добавления открыта в новой вкладке');
+          window.open(`${baseUrl}?view=addTrip`, '_blank');
         })
-        .withFailureHandler(err => setStatus(err.message || 'Не удалось открыть форму', 'error'))
         .getAppBaseUrl();
     }
 
-    function refreshDashboard() {
-      const startDate = document.getElementById('startDate').value || null;
-      const endDate = document.getElementById('endDate').value || null;
+    function renderTrips(trips) {
+      const list = document.getElementById('tripList');
+      if (!trips.length) {
+        list.innerHTML = '<div class="card">Пока нет заявок. Нажмите «Внести поездку».</div>';
+        return;
+      }
 
+      list.innerHTML = trips.map((trip) => `
+        <div class="card trip-item" onclick="showTrip('${trip.tripId}')">
+          <div class="trip-row">
+            <div>
+              <div class="trip-route">${trip.mainRoute}</div>
+              <div class="trip-sub">${formatDate(trip.date)} · Грузов: ${trip.cargoCount} · ${trip.totalKm} км</div>
+            </div>
+            <div class="trip-price">${formatMoney(trip.totalRevenue)}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderMoney(flow) {
+      const pairs = [
+        ['Общая выручка', flow.revenue],
+        ['Топливо', flow.fuel],
+        ['Лизинг', flow.leasing],
+        ['Ремонт и обслуживание', flow.repair],
+        ['Водитель к выплате', flow.driverNet],
+        ['Налог водителя', flow.driverTax],
+        ['Компании после корректировок', flow.companyNet]
+      ];
+
+      document.getElementById('moneyGrid').innerHTML = pairs.map(([label, value]) => `
+        <div class="card">
+          <div class="label">${label}</div>
+          <div class="value">${formatMoney(value)}</div>
+        </div>
+      `).join('');
+    }
+
+    function loadPanel() {
       google.script.run
-        .withSuccessHandler(renderDashboard)
-        .withFailureHandler(err => setStatus(err.message || 'Ошибка загрузки данных', 'error'))
-        .getDashboardData(startDate, endDate);
+        .withSuccessHandler(function(data) {
+          panelData = data;
+          renderTrips(data.trips || []);
+          renderMoney(data.moneyFlow || {});
+          setStatus('Данные обновлены');
+        })
+        .withFailureHandler(function(err) {
+          setStatus(err.message || 'Ошибка загрузки', 'error');
+        })
+        .getRequestsPanelData();
     }
 
-    function renderDashboard(data) {
-      document.getElementById('kpiProfit').textContent = formatMoney(data.totals.totalCompanyProfit);
-      document.getElementById('kpiTrips').textContent = data.totals.tripCount;
-      document.getElementById('kpiFuel').textContent = formatMoney(data.totals.totalFuel);
-      document.getElementById('kpiDriver').textContent = formatMoney(data.totals.totalDriverIncome);
+    function showTrip(tripId) {
+      google.script.run
+        .withSuccessHandler(function(detail) {
+          const rows = detail.cargos.map((c, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td>${c.route}</td>
+              <td>${c.paymentType}</td>
+              <td>${formatMoney(c.amount)}</td>
+              <td>${formatMoney(c.fuel)}</td>
+              <td>${formatMoney(c.leasing)}</td>
+              <td>${formatMoney(c.repair)}</td>
+              <td>${formatMoney(c.driverNet)}</td>
+              <td>${formatMoney(c.companyNet)}</td>
+            </tr>
+          `).join('');
 
-      google.charts.setOnLoadCallback(() => drawChart(data.chart));
-      setStatus('Dashboard обновлен');
+          document.getElementById('tripDetails').innerHTML = `
+            <div class="detail-head">
+              <div><b>Основной маршрут:</b> ${detail.mainRoute}</div>
+              <div><b>Дата:</b> ${formatDate(detail.date)}</div>
+              <div><b>Пробег:</b> ${detail.totalKm} км (холостой: ${detail.emptyKm} км)</div>
+              <div><b>Общая стоимость:</b> ${formatMoney(detail.totals.amount)}</div>
+            </div>
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>#</th><th>Маршрут груза</th><th>Оплата</th><th>Сумма</th><th>Топливо</th><th>Лизинг</th><th>Ремонт</th><th>Водителю</th><th>Компания</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          `;
+          document.getElementById('tripModal').classList.remove('hidden');
+        })
+        .withFailureHandler(function(err) {
+          setStatus(err.message || 'Не удалось открыть поездку', 'error');
+        })
+        .getTripDetails(tripId);
     }
 
-    function drawChart(rows) {
-      const data = new google.visualization.DataTable();
-      data.addColumn('string', 'Дата');
-      data.addColumn('number', 'Выручка');
-      data.addColumn('number', 'Прибыль компании');
-      data.addRows(rows || []);
-
-      const options = {
-        legend: { position: 'bottom' },
-        colors: ['#2563eb', '#16a34a'],
-        chartArea: { left: 50, right: 12, top: 14, bottom: 36 },
-        hAxis: { textStyle: { fontSize: 10 } },
-        vAxis: { minValue: 0 },
-      };
-
-      const chart = new google.visualization.AreaChart(document.getElementById('chartArea'));
-      chart.draw(data, options);
+    function closeTripModal() {
+      document.getElementById('tripModal').classList.add('hidden');
     }
 
-    refreshDashboard();
+    window.addEventListener('message', function(event) {
+      if (event?.data?.type === 'trip-saved') loadPanel();
+    });
+
+    loadPanel();
   </script>
 </body>
 </html>
