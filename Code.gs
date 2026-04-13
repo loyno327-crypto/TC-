@@ -261,6 +261,7 @@ function getRequestsPanelData() {
         tripId,
         date: r[idx.date],
         mainRoute: r[idx.mainRoute] || '—',
+        cargoRoutes: [],
         totalKm: Number(r[idx.totalKm]) || 0,
         emptyKm: Number(r[idx.emptyKm]) || 0,
         totalRevenue: 0,
@@ -282,6 +283,7 @@ function getRequestsPanelData() {
     grouped[tripId].driverTax += Number(r[idx.driverTax]) || 0;
     grouped[tripId].companyNet += Number(r[idx.companyNet]) || 0;
     grouped[tripId].cargoCount += 1;
+    if (r[idx.cargoRoute]) grouped[tripId].cargoRoutes.push(String(r[idx.cargoRoute]));
   });
 
   const trips = Object.values(grouped).sort((a, b) => new Date(b.date) - new Date(a.date));
