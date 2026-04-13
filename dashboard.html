@@ -23,6 +23,7 @@
     </div>
 
     <section id="viewTrips">
+      <div class="kpi-grid" id="tripSummary"></div>
       <div class="card table-card">
         <div class="table-wrap">
           <table class="tbl" id="tripsTable">
@@ -132,6 +133,27 @@
       `).join('');
     }
 
+    function renderTripSummary(trips, flow) {
+      const totalKm = trips.reduce((sum, t) => sum + (Number(t.totalKm) || 0), 0);
+      const totalEmptyKm = trips.reduce((sum, t) => sum + (Number(t.emptyKm) || 0), 0);
+      const totalCargos = trips.reduce((sum, t) => sum + (Number(t.cargoCount) || 0), 0);
+      const cards = [
+        ['Поездок', trips.length],
+        ['Грузов', totalCargos],
+        ['Пробег (км)', totalKm.toLocaleString('ru-RU')],
+        ['Холостой (км)', totalEmptyKm.toLocaleString('ru-RU')],
+        ['Выручка', formatMoney(flow.revenue || 0)],
+        ['Компании', formatMoney(flow.companyNet || 0)]
+      ];
+
+      document.getElementById('tripSummary').innerHTML = cards.map(([label, value]) => `
+        <div class="card">
+          <div class="label">${label}</div>
+          <div class="value">${value}</div>
+        </div>
+      `).join('');
+    }
+
     function renderMoney(flow) {
       const pairs = [
         ['Общая выручка', flow.revenue],
@@ -152,14 +174,21 @@
     }
 
     function loadPanel() {
+      document.getElementById('tripList').innerHTML = '<tr><td colspan="10" class="empty-row">Загрузка данных…</td></tr>';
       google.script.run
         .withSuccessHandler(function(data) {
-          panelData = data;
-          renderTrips(data.trips || []);
-          renderMoney(data.moneyFlow || {});
+          panelData = data || {};
+          const trips = panelData.trips || [];
+          const moneyFlow = panelData.moneyFlow || {};
+          renderTrips(trips);
+          renderTripSummary(trips, moneyFlow);
+          renderMoney(moneyFlow);
           setStatus('Данные обновлены');
         })
         .withFailureHandler(function(err) {
+          document.getElementById('tripList').innerHTML = '<tr><td colspan="10" class="empty-row">Не удалось загрузить данные. Проверьте лист Trips и обновите панель.</td></tr>';
+          document.getElementById('tripSummary').innerHTML = '';
+          document.getElementById('moneyGrid').innerHTML = '';
           setStatus(err.message || 'Ошибка загрузки', 'error');
         })
         .getRequestsPanelData();
