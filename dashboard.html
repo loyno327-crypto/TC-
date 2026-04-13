@@ -71,7 +71,22 @@
     }
 
     function openAddTrip() {
-      google.script.run.openAddTripDialog();
+      google.script.run
+        .withSuccessHandler(function(baseUrl) {
+          if (baseUrl) {
+            const sep = baseUrl.includes('?') ? '&' : '?';
+            const child = window.open(`${baseUrl}${sep}view=addTrip`, 'addTripWindow', 'width=860,height=820');
+            if (child) {
+              child.focus();
+              return;
+            }
+          }
+          google.script.run.openAddTripDialog();
+        })
+        .withFailureHandler(function() {
+          google.script.run.openAddTripDialog();
+        })
+        .getAppBaseUrl();
     }
 
     function renderTrips(trips) {
