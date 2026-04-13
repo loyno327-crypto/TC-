@@ -1,7 +1,9 @@
 const CONFIG = {
   SHEETS: {
     TRIPS: 'Trips',
-    SETTINGS: 'Settings'
+    SETTINGS: 'Settings',
+    TRIPS_ALIASES: ['Trips', 'TRIPS', 'Поездки'],
+    SETTINGS_ALIASES: ['Settings', 'SETTINGS', 'Настройки']
   },
   DEFAULTS: {
     fuelPrice: 73,
@@ -74,11 +76,10 @@ function getTripsHeader() {
 
 function ensureStructure() {
   const ss = SpreadsheetApp.getActive();
-  [CONFIG.SHEETS.TRIPS, CONFIG.SHEETS.SETTINGS].forEach((name) => {
-    if (!ss.getSheetByName(name)) ss.insertSheet(name);
-  });
+  ensureSheetExists(ss, CONFIG.SHEETS.TRIPS, CONFIG.SHEETS.TRIPS_ALIASES);
+  ensureSheetExists(ss, CONFIG.SHEETS.SETTINGS, CONFIG.SHEETS.SETTINGS_ALIASES);
 
-  const tripsSheet = ss.getSheetByName(CONFIG.SHEETS.TRIPS);
+  const tripsSheet = getSheetByAliases(ss, CONFIG.SHEETS.TRIPS, CONFIG.SHEETS.TRIPS_ALIASES);
   const tripHeaders = getTripsHeader();
 
   if (tripsSheet.getLastRow() === 0) {
@@ -91,7 +92,7 @@ function ensureStructure() {
     }
   }
 
-  const settingsSheet = ss.getSheetByName(CONFIG.SHEETS.SETTINGS);
+  const settingsSheet = getSheetByAliases(ss, CONFIG.SHEETS.SETTINGS, CONFIG.SHEETS.SETTINGS_ALIASES);
   if (settingsSheet.getLastRow() === 0) {
     settingsSheet.getRange(1, 1, 7, 2).setValues([
       ['Параметр', 'Значение'],
@@ -107,7 +108,11 @@ function ensureStructure() {
 
 function getSettings() {
   ensureStructure();
-  const sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEETS.SETTINGS);
+  const sh = getSheetByAliases(
+    SpreadsheetApp.getActive(),
+    CONFIG.SHEETS.SETTINGS,
+    CONFIG.SHEETS.SETTINGS_ALIASES
+  );
   const rows = sh.getDataRange().getValues();
   const map = {};
   rows.slice(1).forEach((r) => {
@@ -127,7 +132,11 @@ function getSettings() {
 function saveTrip(payload) {
   ensureStructure();
   const trip = calculateTrip(payload);
-  const sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEETS.TRIPS);
+  const sh = getSheetByAliases(
+    SpreadsheetApp.getActive(),
+    CONFIG.SHEETS.TRIPS,
+    CONFIG.SHEETS.TRIPS_ALIASES
+  );
 
   trip.cargos.forEach((cargo) => {
     sh.appendRow([
@@ -228,7 +237,11 @@ function calculateTrip(payload) {
 
 function getRequestsPanelData() {
   ensureStructure();
-  const sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEETS.TRIPS);
+  const sh = getSheetByAliases(
+    SpreadsheetApp.getActive(),
+    CONFIG.SHEETS.TRIPS,
+    CONFIG.SHEETS.TRIPS_ALIASES
+  );
   const rows = sh.getDataRange().getValues();
   if (rows.length <= 1) {
     return {
@@ -291,7 +304,11 @@ function getTripDetails(tripId) {
   ensureStructure();
   if (!tripId) throw new Error('Не указан ID поездки');
 
-  const sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.SHEETS.TRIPS);
+  const sh = getSheetByAliases(
+    SpreadsheetApp.getActive(),
+    CONFIG.SHEETS.TRIPS,
+    CONFIG.SHEETS.TRIPS_ALIASES
+  );
   const rows = sh.getDataRange().getValues();
   const header = rows[0];
   const idx = createIndex(header);
@@ -383,4 +400,31 @@ function createIndex(header) {
     emptyCorrection: pick('Корректировка (холостой км)', 'Корректировка', 'Empty correction'),
     companyNet: pick('Компании после корректировки', 'Компании', 'Company net')
   };
+}
+
+function ensureSheetExists(ss, primaryName, aliases) {
+  const found = getSheetByAliases(ss, primaryName, aliases || []);
+  if (found) return found;
+  return ss.insertSheet(primaryName);
+}
+
+function getSheetByAliases(ss, primaryName, aliases) {
+  const names = [primaryName].concat(Array.isArray(aliases) ? aliases : []);
+  for (let i = 0; i < names.length; i++) {
+    const direct = ss.getSheetByName(names[i]);
+    if (direct) return direct;
+  }
+
+  const normalizedAliases = names.map(normalizeSheetName).filter(Boolean);
+  const allSheets = ss.getSheets();
+  for (let i = 0; i < allSheets.length; i++) {
+    const name = allSheets[i].getName();
+    if (normalizedAliases.includes(normalizeSheetName(name))) return allSheets[i];
+  }
+
+  return null;
+}
+
+function normalizeSheetName(name) {
+  return String(name || '').trim().toLowerCase();
 }
