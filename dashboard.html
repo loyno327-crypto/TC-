@@ -23,7 +23,27 @@
     </div>
 
     <section id="viewTrips">
-      <div id="tripList" class="trip-list"></div>
+      <div class="card table-card">
+        <div class="table-wrap">
+          <table class="tbl" id="tripsTable">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>ID поездки</th>
+                <th>Основной маршрут</th>
+                <th>Грузов</th>
+                <th>Общий км</th>
+                <th>Холостой км</th>
+                <th>Выручка</th>
+                <th>Топливо</th>
+                <th>Водителю</th>
+                <th>Компании</th>
+              </tr>
+            </thead>
+            <tbody id="tripList"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <section id="viewMoney" style="display:none;">
@@ -92,20 +112,23 @@
     function renderTrips(trips) {
       const list = document.getElementById('tripList');
       if (!trips.length) {
-        list.innerHTML = '<div class="card">Пока нет заявок. Нажмите «Внести поездку».</div>';
+        list.innerHTML = '<tr><td colspan="10" class="empty-row">Пока нет внесенных данных. Нажмите «Внести поездку».</td></tr>';
         return;
       }
 
       list.innerHTML = trips.map((trip) => `
-        <div class="card trip-item" onclick="showTrip('${trip.tripId}')">
-          <div class="trip-row">
-            <div>
-              <div class="trip-route">${trip.mainRoute}</div>
-              <div class="trip-sub">${formatDate(trip.date)} · Грузов: ${trip.cargoCount} · ${trip.totalKm} км</div>
-            </div>
-            <div class="trip-price">${formatMoney(trip.totalRevenue)}</div>
-          </div>
-        </div>
+        <tr class="trip-item" onclick="showTrip('${trip.tripId}')">
+          <td>${formatDate(trip.date)}</td>
+          <td class="trip-id">${trip.tripId}</td>
+          <td class="trip-route">${trip.mainRoute || '—'}</td>
+          <td>${trip.cargoCount || 0}</td>
+          <td>${trip.totalKm || 0}</td>
+          <td>${trip.emptyKm || 0}</td>
+          <td>${formatMoney(trip.totalRevenue)}</td>
+          <td>${formatMoney(trip.fuel)}</td>
+          <td>${formatMoney(trip.driverNet)}</td>
+          <td>${formatMoney(trip.companyNet)}</td>
+        </tr>
       `).join('');
     }
 
@@ -173,6 +196,17 @@
                 </tr>
               </thead>
               <tbody>${rows}</tbody>
+              <tfoot>
+                <tr>
+                  <th colspan="3">ИТОГО</th>
+                  <th>${formatMoney(detail.totals.amount)}</th>
+                  <th>${formatMoney(detail.totals.fuel)}</th>
+                  <th>${formatMoney(detail.totals.leasing)}</th>
+                  <th>${formatMoney(detail.totals.repair)}</th>
+                  <th>${formatMoney(detail.totals.driverNet)}</th>
+                  <th>${formatMoney(detail.totals.companyNet)}</th>
+                </tr>
+              </tfoot>
             </table>
           `;
           document.getElementById('tripModal').classList.remove('hidden');
