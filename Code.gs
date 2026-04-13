@@ -241,14 +241,13 @@ function getRequestsPanelData() {
   const idx = createIndex(header);
   const grouped = {};
 
-  rows.slice(1).forEach((r) => {
-    const tripId = r[idx.tripId];
-    if (!tripId) return;
+  rows.slice(1).forEach((r, i) => {
+    const tripId = resolveTripKey(r, idx, i + 2);
     if (!grouped[tripId]) {
       grouped[tripId] = {
         tripId,
         date: r[idx.date],
-        mainRoute: r[idx.mainRoute],
+        mainRoute: r[idx.mainRoute] || '—',
         totalKm: Number(r[idx.totalKm]) || 0,
         emptyKm: Number(r[idx.emptyKm]) || 0,
         totalRevenue: 0,
@@ -296,7 +295,7 @@ function getTripDetails(tripId) {
   const rows = sh.getDataRange().getValues();
   const header = rows[0];
   const idx = createIndex(header);
-  const items = rows.slice(1).filter((r) => String(r[idx.tripId]) === String(tripId));
+  const items = rows.slice(1).filter((r, i) => resolveTripKey(r, idx, i + 2) === String(tripId));
   if (!items.length) throw new Error('Поездка не найдена');
 
   const first = items[0];
@@ -337,6 +336,20 @@ function getTripDetails(tripId) {
   }, { amount: 0, fuel: 0, netAfterFuel: 0, leasing: 0, repair: 0, driverGross: 0, driverTax: 0, driverNet: 0, emptyCorrection: 0, companyNet: 0 });
 
   return detail;
+}
+
+
+function resolveTripKey(row, idx, rowNumber) {
+  const rawTripId = idx.tripId !== undefined ? row[idx.tripId] : '';
+  if (rawTripId) return String(rawTripId);
+
+  const date = idx.date !== undefined ? row[idx.date] : '';
+  const mainRoute = idx.mainRoute !== undefined ? row[idx.mainRoute] : '';
+  const totalKm = idx.totalKm !== undefined ? row[idx.totalKm] : '';
+  const emptyKm = idx.emptyKm !== undefined ? row[idx.emptyKm] : '';
+  const composite = [date, mainRoute, totalKm, emptyKm].map((v) => String(v || '').trim()).join('|');
+
+  return composite.replace(/^\|+|\|+$/g, '') || `row-${rowNumber}`;
 }
 
 function createIndex(header) {
