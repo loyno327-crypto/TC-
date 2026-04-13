@@ -32,7 +32,7 @@
                 <th>Дата</th>
                 <th>ID поездки</th>
                 <th>Основной маршрут</th>
-                <th>Грузов</th>
+                <th>Маршруты грузов</th>
                 <th>Общий км</th>
                 <th>Холостой км</th>
                 <th>Выручка</th>
@@ -122,7 +122,7 @@
           <td>${formatDate(trip.date)}</td>
           <td class="trip-id">${trip.tripId}</td>
           <td class="trip-route">${trip.mainRoute || '—'}</td>
-          <td>${trip.cargoCount || 0}</td>
+          <td>${(trip.cargoRoutes || []).join('<br>') || '—'}</td>
           <td>${trip.totalKm || 0}</td>
           <td>${trip.emptyKm || 0}</td>
           <td>${formatMoney(trip.totalRevenue)}</td>
@@ -217,6 +217,14 @@
               <div><b>Дата:</b> ${formatDate(detail.date)}</div>
               <div><b>Пробег:</b> ${detail.totalKm} км (холостой: ${detail.emptyKm} км)</div>
               <div><b>Общая стоимость:</b> ${formatMoney(detail.totals.amount)}</div>
+            </div>
+            <div class="kpi-grid" style="margin-bottom:10px;">
+              <div class="card"><div class="label">Топливо</div><div class="value">${formatMoney(detail.totals.fuel)}</div></div>
+              <div class="card"><div class="label">Лизинг</div><div class="value">${formatMoney(detail.totals.leasing)}</div></div>
+              <div class="card"><div class="label">Ремонт</div><div class="value">${formatMoney(detail.totals.repair)}</div></div>
+              <div class="card"><div class="label">Водителю к выплате</div><div class="value">${formatMoney(detail.totals.driverNet)}</div></div>
+              <div class="card"><div class="label">Налог водителя</div><div class="value">${formatMoney(detail.totals.driverTax)}</div></div>
+              <div class="card"><div class="label">Компании</div><div class="value">${formatMoney(detail.totals.companyNet)}</div></div>
             </div>
             <table class="tbl">
               <thead>
